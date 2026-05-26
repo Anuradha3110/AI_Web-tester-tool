@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+*.spec
+
+# Environment variables — never commit secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Database & user data
+*.db
+*.sqlite
+*.sqlite3
+
+# Screenshots generated at runtime
+backend/screenshots/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.vercel
+*.pem
