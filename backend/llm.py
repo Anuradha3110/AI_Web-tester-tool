@@ -17,18 +17,18 @@ class LLMClient:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         api_keys: Optional[List[str]] = None,
-        custom_base_url: Optional[str] = None,
-        provider_keys: Optional[dict] = None
+        custom_base_url: Optional[str] = None
     ):
         self.provider = (provider or "anthropic").lower()
         self.model = model
         self.custom_base_url = custom_base_url
-        self.provider_keys = provider_keys or {}
         
-        # Resolve initial API keys for primary provider
-        self.api_keys = self._get_keys_for_provider(self.provider)
-        if api_keys and not self.api_keys:
+        # Resolve API keys from parameter or env
+        if api_keys:
+            # Handle list of keys
             self.api_keys = [k.strip() for k in api_keys if k.strip()]
+        else:
+            self.api_keys = self._get_keys_from_env(self.provider)
 
         # Set default model if none specified
         if not self.model or self.model.strip() == "":
@@ -39,23 +39,11 @@ class LLMClient:
             f"keys loaded: {len(self.api_keys)})"
         )
 
-    def _get_keys_for_provider(self, provider: str) -> List[str]:
-        # 1. Check if keys were supplied dynamically from the UI keys map
-        ui_keys = self.provider_keys.get(provider)
-        if ui_keys:
-            if isinstance(ui_keys, list):
-                return [k.strip() for k in ui_keys if k.strip()]
-            normalized = ui_keys.replace("\r\n", ",").replace("\n", ",")
-            return [k.strip() for k in normalized.split(",") if k.strip()]
-            
-        # 2. Check env variables
-        return self._get_keys_from_env(provider)
-
     def _get_keys_from_env(self, provider: str) -> List[str]:
         env_vars = {
             "anthropic": ["ANTHROPIC_API_KEY"],
             "openai": ["OPENAI_API_KEY"],
-            "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+            "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
             "groq": ["GROQ_API_KEY"],
             "custom": ["CUSTOM_API_KEY"]
         }
@@ -85,103 +73,53 @@ class LLMClient:
         messages: List[dict],
         on_key_rotate = None
     ) -> str:
-        # Determine the order of providers to try
-        # Primary provider first
-        providers_to_try = [self.provider]
-        
-        # Add fallback candidates that have keys configured (either in provider_keys map or env)
-        all_possible_providers = ["anthropic", "openai", "gemini", "groq"]
-        for p in all_possible_providers:
-            if p != self.provider:
-                keys = self._get_keys_for_provider(p)
-                if keys:
-                    providers_to_try.append(p)
+        if not self.api_keys:
+            raise LLMException(
+                f"No API keys configured for provider '{self.provider}'. "
+                f"Please add a key in the settings panel or set it in backend/.env file."
+            )
 
+        # Try keys sequentially with rotation
         last_error = None
-        
-        for current_provider in providers_to_try:
-            # Resolve keys and model for this provider
-            if current_provider == self.provider:
-                current_keys = self.api_keys
-                current_model = self.model
-                current_base_url = self.custom_base_url
-            else:
-                current_keys = self._get_keys_for_provider(current_provider)
-                current_model = self._get_default_model(current_provider)
-                current_base_url = None
+        for idx, api_key in enumerate(self.api_keys):
+            try:
+                return await self._call_provider_api(api_key, system_prompt, messages)
+            except Exception as e:
+                last_error = e
+                status_code = getattr(e, "status_code", None)
+                error_msg = str(e)
                 
-            if not current_keys:
-                continue
-                
-            # If we had to fall back to a different provider, emit a warning/notification
-            if current_provider != self.provider:
-                fallback_msg = (
-                    f"[API Fallback] selected provider '{self.provider}' failed. "
-                    f"Switching to fallback provider '{current_provider}' ({current_model})..."
+                logger.warning(
+                    f"LLM API call failed with key {idx+1}/{len(self.api_keys)} "
+                    f"for provider '{self.provider}': {error_msg} (status: {status_code})"
                 )
-                logger.info(fallback_msg)
-                if on_key_rotate:
-                    try:
-                        if asyncio.iscoroutinefunction(on_key_rotate):
-                            await on_key_rotate(fallback_msg)
-                        else:
-                            on_key_rotate(fallback_msg)
-                    except Exception as cb_err:
-                        logger.error(f"Callback error in on_key_rotate: {cb_err}")
-
-            # Try the keys for the current provider
-            for idx, api_key in enumerate(current_keys):
-                try:
-                    # Temporarily override self.provider/model/base_url for the API call
-                    original_provider = self.provider
-                    original_model = self.model
-                    original_base_url = self.custom_base_url
-                    
-                    self.provider = current_provider
-                    self.model = current_model
-                    self.custom_base_url = current_base_url
-                    
-                    try:
-                        return await self._call_provider_api(api_key, system_prompt, messages)
-                    finally:
-                        self.provider = original_provider
-                        self.model = original_model
-                        self.custom_base_url = original_base_url
-                        
-                except Exception as e:
-                    last_error = e
-                    status_code = getattr(e, "status_code", None)
-                    error_msg = str(e)
-                    
-                    logger.warning(
-                        f"LLM API call failed with key {idx+1}/{len(current_keys)} "
-                        f"for provider '{current_provider}': {error_msg} (status: {status_code})"
+                
+                # If we encounter a Bad Request (400), don't rotate since it's a structural error
+                if status_code == 400:
+                    raise LLMException(f"Bad Request (400) from {self.provider}: {error_msg}", status_code=400)
+                
+                # Check if we have more keys to rotate to
+                if idx < len(self.api_keys) - 1:
+                    rotate_msg = (
+                        f"[API Warning] Key #{idx+1} failed ({status_code or 'Error'}). "
+                        f"Rotating to key #{idx+2} for provider '{self.provider}'..."
                     )
-                    
-                    # If it's a Bad Request (400), it's probably structural so we stop rotating this pool
-                    if status_code == 400:
-                        break
-                        
-                    if idx < len(current_keys) - 1:
-                        rotate_msg = (
-                            f"[API Warning] Key #{idx+1} failed ({status_code or 'Error'}). "
-                            f"Rotating to key #{idx+2} for provider '{current_provider}'..."
-                        )
-                        logger.info(rotate_msg)
-                        if on_key_rotate:
-                            try:
-                                if asyncio.iscoroutinefunction(on_key_rotate):
-                                    await on_key_rotate(rotate_msg)
-                                else:
-                                    on_key_rotate(rotate_msg)
-                            except Exception as cb_err:
-                                logger.error(f"Callback error in on_key_rotate: {cb_err}")
-                        continue
-                    else:
-                        break
-                        
+                    logger.info(rotate_msg)
+                    if on_key_rotate:
+                        try:
+                            # Run callback if it is async or sync
+                            if asyncio.iscoroutinefunction(on_key_rotate):
+                                await on_key_rotate(rotate_msg)
+                            else:
+                                on_key_rotate(rotate_msg)
+                        except Exception as cb_err:
+                            logger.error(f"Callback error in on_key_rotate: {cb_err}")
+                    continue
+                else:
+                    break
+
         raise LLMException(
-            f"All configured API keys and fallback providers failed. "
+            f"All configured API keys for provider '{self.provider}' failed. "
             f"Last error: {last_error}",
             status_code=getattr(last_error, "status_code", None)
         )
