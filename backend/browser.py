@@ -70,6 +70,10 @@ class BrowserController:
 
     async def start(self):
         """Launch browser and wire up all automation subsystems."""
+        # Servers without a display (e.g. Render) cannot run headed Chrome
+        if not os.environ.get("DISPLAY"):
+            self.headless = True
+
         self.playwright = await async_playwright().start()
 
         if self.headless:
