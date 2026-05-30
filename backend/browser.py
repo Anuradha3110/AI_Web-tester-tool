@@ -89,18 +89,20 @@ class BrowserController:
                     headless=False,
                     slow_mo=self.slow_mo,
                     channel="msedge",
+                    args=["--start-maximized"],
                     timeout=30000,
                 )
             except Exception:
-                # Fallback to bundled Chromium if Edge is unavailable
                 self.browser = await self.playwright.chromium.launch(
                     headless=False,
                     slow_mo=self.slow_mo,
+                    args=["--start-maximized"],
                     timeout=30000,
                 )
 
         context = await self.browser.new_context(
-            viewport={"width": 1280, "height": 720},
+            no_viewport=True if not self.headless else False,
+            viewport={"width": 1280, "height": 720} if self.headless else None,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -108,6 +110,8 @@ class BrowserController:
             ),
         )
         self.page = await context.new_page()
+        if not self.headless:
+            await self.page.bring_to_front()
 
         # Apply global timeouts from config
         self.page.set_default_timeout(self.cfg.DEFAULT_TIMEOUT)
@@ -172,8 +176,9 @@ class BrowserController:
             label=f"navigate({url[:60]})",
         )
         await self.wait_mgr.for_page_ready()
-        # Dismiss any immediate popups (cookie banners, etc.)
         await self.popup_hdlr.dismiss_popups()
+        if not self.headless:
+            await self.page.bring_to_front()
         logger.info("Navigated to: %s", url)
 
     # ------------------------------------------------------------------
