@@ -89,20 +89,17 @@ class BrowserController:
                     headless=False,
                     slow_mo=self.slow_mo,
                     channel="msedge",
-                    args=["--start-maximized"],
                     timeout=30000,
                 )
             except Exception:
                 self.browser = await self.playwright.chromium.launch(
                     headless=False,
                     slow_mo=self.slow_mo,
-                    args=["--start-maximized"],
                     timeout=30000,
                 )
 
         context = await self.browser.new_context(
-            no_viewport=True if not self.headless else False,
-            viewport={"width": 1280, "height": 720} if self.headless else None,
+            viewport={"width": 1280, "height": 720},
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
