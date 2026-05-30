@@ -17,15 +17,19 @@ class LLMClient:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         api_keys: Optional[List[str]] = None,
-        custom_base_url: Optional[str] = None
+        custom_base_url: Optional[str] = None,
+        provider_keys: Optional[dict] = None,
     ):
         self.provider = (provider or "anthropic").lower()
         self.model = model
         self.custom_base_url = custom_base_url
-        
-        # Resolve API keys from parameter or env
-        if api_keys:
-            # Handle list of keys
+
+        # Resolve API keys: per-provider dict > explicit list > env vars
+        provider_specific = (provider_keys or {}).get(self.provider)
+        if provider_specific:
+            raw = provider_specific if isinstance(provider_specific, list) else [provider_specific]
+            self.api_keys = [k.strip() for k in raw if str(k).strip()]
+        elif api_keys:
             self.api_keys = [k.strip() for k in api_keys if k.strip()]
         else:
             self.api_keys = self._get_keys_from_env(self.provider)
