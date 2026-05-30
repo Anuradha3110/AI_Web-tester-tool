@@ -1,3 +1,11 @@
+"""Database layer - SQLite persistence for test runs and steps.
+
+Schema changes from the original:
+  test_steps: added retry_count INTEGER, recovery_info TEXT
+
+Migration is performed with ALTER TABLE so existing databases are upgraded
+automatically on the next startup without data loss.
+"""
 import sqlite3
 import uuid
 from datetime import datetime
@@ -14,33 +22,35 @@ class Database:
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_runs (
-                id TEXT PRIMARY KEY,
-                url TEXT NOT NULL,
-                goal TEXT NOT NULL,
-                status TEXT NOT NULL,
-                final_verdict TEXT,
-                duration REAL,
-                total_steps INTEGER DEFAULT 0,
-                passed_steps INTEGER DEFAULT 0,
-                failed_steps INTEGER DEFAULT 0,
-                error TEXT,
-                created_at TEXT NOT NULL
+                id             TEXT PRIMARY KEY,
+                url            TEXT NOT NULL,
+                goal           TEXT NOT NULL,
+                status         TEXT NOT NULL,
+                final_verdict  TEXT,
+                duration       REAL,
+                total_steps    INTEGER DEFAULT 0,
+                passed_steps   INTEGER DEFAULT 0,
+                failed_steps   INTEGER DEFAULT 0,
+                error          TEXT,
+                created_at     TEXT NOT NULL
             )
         """)
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_steps (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                test_run_id TEXT NOT NULL,
-                step_number INTEGER NOT NULL,
-                action TEXT,
-                target TEXT,
-                value TEXT,
-                reasoning TEXT,
-                status TEXT,
-                error_message TEXT,
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                test_run_id     TEXT NOT NULL,
+                step_number     INTEGER NOT NULL,
+                action          TEXT,
+                target          TEXT,
+                value           TEXT,
+                reasoning       TEXT,
+                status          TEXT,
+                error_message   TEXT,
                 screenshot_path TEXT,
-                created_at TEXT NOT NULL,
+                retry_count     INTEGER DEFAULT 0,
+                recovery_info   TEXT,
+                created_at      TEXT NOT NULL,
                 FOREIGN KEY (test_run_id) REFERENCES test_runs(id)
             )
         """)
@@ -55,7 +65,27 @@ class Database:
         """)
 
         conn.commit()
+
+        # Safe migration: add new columns to existing databases
+        self._migrate(conn)
+
         conn.close()
+
+    def _migrate(self, conn: sqlite3.Connection):
+        """Add new columns to an existing DB without breaking old rows."""
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(test_steps)")
+        existing = {row[1] for row in cursor.fetchall()}
+
+        migrations = [
+            ("retry_count",   "INTEGER DEFAULT 0"),
+            ("recovery_info", "TEXT"),
+        ]
+        for col, definition in migrations:
+            if col not in existing:
+                cursor.execute(f"ALTER TABLE test_steps ADD COLUMN {col} {definition}")
+
+        conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -72,9 +102,10 @@ class Database:
         cursor.execute(
             """
             INSERT INTO test_runs
-            (id, url, goal, status, final_verdict, duration, total_steps, passed_steps, failed_steps, error, created_at)
+            (id, url, goal, status, final_verdict, duration,
+             total_steps, passed_steps, failed_steps, error, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+            """,
             (
                 test_id,
                 url,
@@ -94,9 +125,10 @@ class Database:
             cursor.execute(
                 """
                 INSERT INTO test_steps
-                (test_run_id, step_number, action, target, value, reasoning, status, error_message, screenshot_path, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+                (test_run_id, step_number, action, target, value, reasoning,
+                 status, error_message, screenshot_path, retry_count, recovery_info, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     test_id,
                     step.get("step"),
@@ -107,6 +139,8 @@ class Database:
                     step.get("status"),
                     step.get("error"),
                     step.get("screenshot"),
+                    step.get("retry_count", 0),
+                    step.get("recovery"),
                     datetime.now().isoformat(),
                 ),
             )
@@ -139,7 +173,6 @@ class Database:
             return None
 
         run_dict = dict(run)
-
         cursor.execute(
             "SELECT * FROM test_steps WHERE test_run_id = ? ORDER BY step_number",
             (test_id,),

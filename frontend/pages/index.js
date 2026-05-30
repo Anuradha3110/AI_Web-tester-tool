@@ -75,11 +75,58 @@ export default function Home() {
   const fileInputRef = useRef(null);
   const consoleRef = useRef(null);
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [provider, setProvider] = useState("anthropic");
+  const [model, setModel] = useState("claude-3-5-sonnet-20241022");
+  const [apiKeys, setApiKeys] = useState("");
+  const [customBaseUrl, setCustomBaseUrl] = useState("");
+
   useEffect(() => {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
   }, [execLogs]);
+
+  useEffect(() => {
+    const savedProvider = localStorage.getItem("llm_provider");
+    const savedModel = localStorage.getItem("llm_model");
+    const savedKeys = localStorage.getItem("llm_api_keys");
+    const savedBaseUrl = localStorage.getItem("llm_custom_base_url");
+
+    if (savedProvider) setProvider(savedProvider);
+    if (savedModel) setModel(savedModel);
+    if (savedKeys) setApiKeys(savedKeys);
+    if (savedBaseUrl) setCustomBaseUrl(savedBaseUrl);
+  }, []);
+
+  const handleProviderChange = (newProvider) => {
+    setProvider(newProvider);
+    let defaultModel = "";
+    if (newProvider === "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
+    else if (newProvider === "openai") defaultModel = "gpt-4o-mini";
+    else if (newProvider === "gemini") defaultModel = "gemini-2.5-flash";
+    else if (newProvider === "groq") defaultModel = "llama-3.3-70b-versatile";
+    else if (newProvider === "custom") defaultModel = "custom-model";
+    
+    setModel(defaultModel);
+    localStorage.setItem("llm_provider", newProvider);
+    localStorage.setItem("llm_model", defaultModel);
+  };
+
+  const handleModelChange = (newModel) => {
+    setModel(newModel);
+    localStorage.setItem("llm_model", newModel);
+  };
+
+  const handleKeysChange = (newKeys) => {
+    setApiKeys(newKeys);
+    localStorage.setItem("llm_api_keys", newKeys);
+  };
+
+  const handleBaseUrlChange = (newUrl) => {
+    setCustomBaseUrl(newUrl);
+    localStorage.setItem("llm_custom_base_url", newUrl);
+  };
 
   const handleFileSelect = (e) => {
     const incoming = Array.from(e.target.files || []);
@@ -181,6 +228,15 @@ export default function Home() {
     }
     attachedFiles.forEach((f) => formData.append("files", f));
 
+    formData.append("provider", provider);
+    formData.append("model", model);
+    if (apiKeys.trim()) {
+      formData.append("api_keys", apiKeys.trim());
+    }
+    if (provider === "custom" && customBaseUrl.trim()) {
+      formData.append("custom_base_url", customBaseUrl.trim());
+    }
+
     if (headedMode) {
       formData.append("headed", "true");
       formData.append("slow_mo", String(slowMo));
@@ -235,6 +291,7 @@ export default function Home() {
       setUrl(data.url);
       setGoal(data.goal);
       setShowHistory(false);
+      setShowSettings(false);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch {
       setError("Could not load test details.");
@@ -252,10 +309,29 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">AI Web Tester</h1>
-              <p className="text-blue-300 text-xs">Powered by Claude + Playwright</p>
+              <p className="text-blue-300 text-xs">
+                Powered by {provider === "anthropic" ? "Claude" : provider === "openai" ? "GPT" : provider === "gemini" ? "Gemini" : provider === "groq" ? "Groq" : "Custom LLM"} + Playwright
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setShowSettings(!showSettings);
+                setShowHistory(false);
+              }}
+              className={`text-blue-300 hover:text-white text-sm font-medium border px-4 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                showSettings 
+                  ? "bg-blue-600/30 border-blue-500/50 text-white font-semibold" 
+                  : "border-white/20 hover:border-white/40"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              AI Settings
+            </button>
             <Link
               href="/reports"
               className="text-blue-300 hover:text-white text-sm font-medium border border-white/20 hover:border-white/40 px-4 py-1.5 rounded-lg transition-all"
@@ -263,8 +339,15 @@ export default function Home() {
               View Reports
             </Link>
             <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="text-blue-300 hover:text-white text-sm font-medium border border-white/20 hover:border-white/40 px-4 py-1.5 rounded-lg transition-all"
+              onClick={() => {
+                setShowHistory(!showHistory);
+                setShowSettings(false);
+              }}
+              className={`text-blue-300 hover:text-white text-sm font-medium border px-4 py-1.5 rounded-lg transition-all ${
+                showHistory 
+                  ? "bg-blue-600/30 border-blue-500/50 text-white font-semibold" 
+                  : "border-white/20 hover:border-white/40"
+              }`}
             >
               {showHistory ? "Close History" : "History"}
             </button>
@@ -275,6 +358,130 @@ export default function Home() {
       <main className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left: Form */}
         <div className="lg:col-span-2">
+          {showSettings && (
+            <div className="bg-white rounded-2xl shadow-xl border border-blue-100 p-6 mb-6 transition-all duration-300">
+              <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-blue-500 font-bold text-sm">⚙</div>
+                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">AI Settings & Key Rotation</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xs font-semibold"
+                >
+                  ✕ Close
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Provider Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    AI Provider
+                  </label>
+                  <select
+                    value={provider}
+                    onChange={(e) => handleProviderChange(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white text-gray-700"
+                  >
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="openai">OpenAI (GPT)</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="groq">Groq (Llama / Mixtral)</option>
+                    <option value="custom">Custom (OpenAI Compatible)</option>
+                  </select>
+                </div>
+
+                {/* Model Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Model Selection
+                  </label>
+                  {provider === "custom" ? (
+                    <input
+                      type="text"
+                      value={model}
+                      onChange={(e) => handleModelChange(e.target.value)}
+                      placeholder="e.g. deepseek-chat"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-700 font-mono"
+                    />
+                  ) : (
+                    <select
+                      value={model}
+                      onChange={(e) => handleModelChange(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white text-gray-700"
+                    >
+                      {provider === "anthropic" && (
+                        <>
+                          <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet (Recommended)</option>
+                          <option value="claude-3-haiku-20240307">claude-3-haiku</option>
+                        </>
+                      )}
+                      {provider === "openai" && (
+                        <>
+                          <option value="gpt-4o-mini">gpt-4o-mini (Recommended)</option>
+                          <option value="gpt-4o">gpt-4o</option>
+                          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                        </>
+                      )}
+                      {provider === "gemini" && (
+                        <>
+                          <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended)</option>
+                          <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                          <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                        </>
+                      )}
+                      {provider === "groq" && (
+                        <>
+                          <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended)</option>
+                          <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                          <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                        </>
+                      )}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {provider === "custom" && (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Custom Base URL (OpenAI Compatible)
+                  </label>
+                  <input
+                    type="text"
+                    value={customBaseUrl}
+                    onChange={(e) => handleBaseUrlChange(e.target.value)}
+                    placeholder="https://openrouter.ai/api/v1  or  http://localhost:11434/v1"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-700 font-mono"
+                  />
+                </div>
+              )}
+
+              {/* API Keys Pool */}
+              <div className="mt-3">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-gray-600">
+                    API Keys (Rotation Pool)
+                  </label>
+                  <span className="text-[10px] text-gray-400 italic">
+                    Stored safely in browser storage
+                  </span>
+                </div>
+                <textarea
+                  value={apiKeys}
+                  onChange={(e) => handleKeysChange(e.target.value)}
+                  placeholder="Enter multiple keys (separated by commas or newlines) to enable automatic rate-limit & credit key rotation!"
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-700 font-mono text-xs"
+                />
+                <p className="text-[10px] text-gray-400 mt-1 leading-normal">
+                  💡 Leave blank to fall back to environment keys defined in the backend <code className="bg-gray-100 px-1 py-0.5 rounded font-mono">.env</code> file. You can enter comma-separated lists in your backend env too!
+                </p>
+              </div>
+            </div>
+          )}
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <h2 className="text-xl font-bold text-gray-800 mb-1">Run a Website Test</h2>
             <p className="text-gray-500 text-sm mb-6">

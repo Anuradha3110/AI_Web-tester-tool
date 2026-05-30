@@ -66,6 +66,19 @@ db = Database(db_path=DB_PATH)
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 
+def parse_keys_list(api_keys: Optional[str]) -> Optional[List[str]]:
+    if not api_keys:
+        return None
+    try:
+        keys_list = json.loads(api_keys)
+        if isinstance(keys_list, list):
+            return [str(k).strip() for k in keys_list if str(k).strip()]
+        return [str(keys_list).strip()]
+    except json.JSONDecodeError:
+        normalized = api_keys.replace("\r\n", ",").replace("\n", ",")
+        return [k.strip() for k in normalized.split(",") if k.strip()]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
@@ -87,8 +100,13 @@ app.mount("/screenshots", StaticFiles(directory=SCREENSHOTS_DIR), name="screensh
 
 @app.get("/health")
 async def health():
-    api_key_set = bool(os.getenv("ANTHROPIC_API_KEY"))
-    return {"status": "ok", "service": "AI Web Tester", "api_key_configured": api_key_set}
+    configured = {
+        "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+        "gemini": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
+        "groq": bool(os.getenv("GROQ_API_KEY")),
+    }
+    return {"status": "ok", "service": "AI Web Tester", "api_keys_configured": configured}
 
 
 @app.post("/stop/{run_id}")
@@ -108,18 +126,25 @@ async def run_test(
     credentials: Optional[str] = Form(None),
     files: List[UploadFile] = File(default=[]),
     run_id: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
+    api_keys: Optional[str] = Form(None),
+    custom_base_url: Optional[str] = Form(None),
+    all_provider_keys: Optional[str] = Form(None),
 ):
     if not url.strip():
         raise HTTPException(status_code=400, detail="URL is required")
     if not goal.strip():
         raise HTTPException(status_code=400, detail="Goal is required")
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY is not set. Add it to backend/.env file.",
-        )
+    keys_list = parse_keys_list(api_keys)
+    
+    all_keys_dict: Optional[dict] = None
+    if all_provider_keys:
+        try:
+            all_keys_dict = json.loads(all_provider_keys)
+        except json.JSONDecodeError:
+            pass
 
     credentials_dict: Optional[dict] = None
     if credentials:
@@ -143,7 +168,13 @@ async def run_test(
     stop_event = asyncio.Event()
     _stop_events[active_run_id] = stop_event
     try:
-        agent = WebTestingAgent()
+        agent = WebTestingAgent(
+            provider=provider,
+            model=model,
+            api_keys=keys_list,
+            custom_base_url=custom_base_url,
+            provider_keys=all_keys_dict,
+        )
         result = await agent.run(
             url=url.strip(),
             goal=effective_goal,
@@ -177,18 +208,25 @@ async def run_test_stream(
     headed: str = Form("false"),
     slow_mo: int = Form(0),
     run_id: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
+    api_keys: Optional[str] = Form(None),
+    custom_base_url: Optional[str] = Form(None),
+    all_provider_keys: Optional[str] = Form(None),
 ):
     if not url.strip():
         raise HTTPException(status_code=400, detail="URL is required")
     if not goal.strip():
         raise HTTPException(status_code=400, detail="Goal is required")
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY is not set. Add it to backend/.env file.",
-        )
+    keys_list = parse_keys_list(api_keys)
+    
+    all_keys_dict: Optional[dict] = None
+    if all_provider_keys:
+        try:
+            all_keys_dict = json.loads(all_provider_keys)
+        except json.JSONDecodeError:
+            pass
 
     is_headed = headed.lower() in ("true", "1", "yes")
 
@@ -226,7 +264,13 @@ async def run_test_stream(
 
         async def run_agent_task():
             try:
-                agent = WebTestingAgent()
+                agent = WebTestingAgent(
+                    provider=provider,
+                    model=model,
+                    api_keys=keys_list,
+                    custom_base_url=custom_base_url,
+                    provider_keys=all_keys_dict,
+                )
                 result = await agent.run(
                     url=url.strip(),
                     goal=effective_goal,
