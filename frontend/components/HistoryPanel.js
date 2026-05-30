@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export default function HistoryPanel({ onSelect }) {
   const [history, setHistory] = useState([]);

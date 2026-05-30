@@ -4,7 +4,7 @@ import Link from "next/link";
 import TestResult from "../components/TestResult";
 import HistoryPanel from "../components/HistoryPanel";
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 const EXAMPLE_GOALS = [
   "Check if the homepage loads correctly",
