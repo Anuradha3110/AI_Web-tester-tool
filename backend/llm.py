@@ -63,7 +63,7 @@ class LLMClient:
 
     def _get_default_model(self, provider: str) -> str:
         defaults = {
-            "anthropic": "claude-3-5-sonnet-20241022",
+            "anthropic": "claude-sonnet-4-5",
             "openai": "gpt-4o-mini",
             "gemini": "gemini-2.5-flash",
             "groq": "llama-3.3-70b-versatile",

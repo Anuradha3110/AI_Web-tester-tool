@@ -77,7 +77,7 @@ export default function Home() {
 
   const [showSettings, setShowSettings] = useState(false);
   const [provider, setProvider] = useState("anthropic");
-  const [model, setModel] = useState("claude-3-5-sonnet-20241022");
+  const [model, setModel] = useState("claude-sonnet-4-5");
   const [apiKeys, setApiKeys] = useState("");
   const [customBaseUrl, setCustomBaseUrl] = useState("");
 
@@ -102,7 +102,7 @@ export default function Home() {
   const handleProviderChange = (newProvider) => {
     setProvider(newProvider);
     let defaultModel = "";
-    if (newProvider === "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
+    if (newProvider === "anthropic") defaultModel = "claude-sonnet-4-5";
     else if (newProvider === "openai") defaultModel = "gpt-4o-mini";
     else if (newProvider === "gemini") defaultModel = "gemini-2.5-flash";
     else if (newProvider === "groq") defaultModel = "llama-3.3-70b-versatile";
@@ -392,8 +392,9 @@ export default function Home() {
                     >
                       {provider === "anthropic" && (
                         <>
-                          <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet (Recommended)</option>
-                          <option value="claude-3-haiku-20240307">claude-3-haiku</option>
+                          <option value="claude-sonnet-4-5">claude-sonnet-4-5 (Recommended)</option>
+                          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5</option>
+                          <option value="claude-opus-4-5">claude-opus-4-5</option>
                         </>
                       )}
                       {provider === "openai" && (
