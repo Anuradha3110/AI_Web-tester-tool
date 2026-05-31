@@ -724,8 +724,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* Execution Console — visible in headed mode */}
-            {headedMode && (execLogs.length > 0 || loading) && (
+            {/* Execution Console */}
+            {(execLogs.length > 0 || loading) && (
               <div className="mt-6 rounded-xl border border-gray-700 bg-gray-950 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
                   <div className="flex items-center gap-2">
