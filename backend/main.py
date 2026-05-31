@@ -301,14 +301,24 @@ async def run_test_stream(
                 await queue.put(None)
 
         task = asyncio.create_task(run_agent_task())
+        elapsed = 0
+        max_seconds = 900  # 15 minutes hard cap
         try:
-            while True:
-                event = await asyncio.wait_for(queue.get(), timeout=360)
-                if event is None:
-                    break
-                yield f"data: {json.dumps(event)}\n\n"
-        except asyncio.TimeoutError:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Test timed out after 6 minutes'})}\n\n"
+            while elapsed < max_seconds:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=25)
+                    if event is None:
+                        break
+                    yield f"data: {json.dumps(event)}\n\n"
+                    elapsed = 0  # reset on real activity
+                except asyncio.TimeoutError:
+                    if task.done():
+                        break
+                    # Keep the connection alive through proxies/load balancers
+                    yield ": heartbeat\n\n"
+                    elapsed += 25
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Test timed out after 15 minutes'})}\n\n"
         finally:
             if not task.done():
                 task.cancel()

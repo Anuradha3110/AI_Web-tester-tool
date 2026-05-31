@@ -80,8 +80,17 @@ class BrowserController:
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 slow_mo=self.slow_mo,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-                timeout=30000,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--no-zygote",
+                    "--single-process",
+                    "--disable-software-rasterizer",
+                    "--disable-extensions",
+                ],
+                timeout=60000,
             )
         else:
             try:

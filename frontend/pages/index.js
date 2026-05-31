@@ -240,30 +240,8 @@ export default function Home() {
     if (headedMode) {
       formData.append("headed", "true");
       formData.append("slow_mo", String(slowMo));
-      await runTestStreaming(formData);
-    } else {
-      try {
-        const { data } = await axios.post(`${BACKEND}/test`, formData, {
-          timeout: 300000,
-        });
-        setResult(data);
-        setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-      } catch (err) {
-        const serverDetail = err.response?.data?.detail;
-        const msg = serverDetail
-          ? `Server error: ${serverDetail}`
-          : err.code === "ECONNREFUSED" || err.message?.includes("Network Error")
-          ? "Cannot connect to backend. Make sure you ran: cd backend && python main.py"
-          : err.code === "ECONNABORTED"
-          ? "Request timed out. The test took too long."
-          : err.message || "Unknown error";
-        setError(msg);
-      } finally {
-        setLoading(false);
-        setRunId("");
-        setStopping(false);
-      }
     }
+    await runTestStreaming(formData);
   };
 
   const loadHistoryItem = async (test) => {
